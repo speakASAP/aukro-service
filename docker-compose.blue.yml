@@ -1,0 +1,220 @@
+services:
+  gateway-proxy:
+    image: nginx:alpine
+    container_name: aukro-service-gateway-proxy-blue
+    # Port mapping for health checks only - gateway-proxy is accessed via Docker network (http://gateway-proxy)
+    # Host port 3704 (available in 34xx range, mapped to container port 80
+    ports:
+      - "${GATEWAY_PROXY_PORT:-3704}:80"
+    volumes:
+      - ./nginx/gateway-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - nginx-network
+    depends_on:
+      - aukro
+      - settings
+      - imports
+    restart: unless-stopped
+    # Note: nginx configuration uses dynamic DNS resolution (resolver + variables in proxy_pass)
+    # This prevents stale IP caching when services restart and get new IP addresses
+    # DNS is re-resolved every 10 seconds, and variables in proxy_pass force resolution on each request
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "--tries=1", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: aukro-service-api-gateway-blue
+    ports:
+      - "${API_GATEWAY_PORT:-3701}:3701"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - SERVICE_NAME=${SERVICE_NAME:-aukro-service}
+      - API_GATEWAY_PORT=${API_GATEWAY_PORT:-3701}
+      - AUKRO_SERVICE_URL=${AUKRO_SERVICE_URL:-http://aukro:3700}
+      - IMPORT_SERVICE_URL=${IMPORT_SERVICE_URL:-http://imports:3702}
+      - SETTINGS_SERVICE_URL=${SETTINGS_SERVICE_URL:-http://settings:3703}
+      - AUKRO_SETTINGS_SERVICE_PORT=${AUKRO_SETTINGS_SERVICE_PORT:-3703}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NOTIFICATION_SERVICE_URL=${NOTIFICATION_SERVICE_URL}
+      - LOGGING_SERVICE_URL=${LOGGING_SERVICE_URL}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT}
+      - GATEWAY_TIMEOUT=${GATEWAY_TIMEOUT}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-aukro}
+      - DATABASE_URL=${DATABASE_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+        reservations:
+          memory: 70M
+    networks:
+      - nginx-network
+    depends_on:
+      - gateway-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3701/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  aukro:
+    build:
+      context: .
+      dockerfile: services/aukro-service/Dockerfile
+    container_name: aukro-service-blue
+    ports:
+      - "${AUKRO_SERVICE_PORT:-3700}:3700"
+    volumes:
+      - ./logs:/app/logs
+
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - SERVICE_NAME=${SERVICE_NAME:-aukro-service}
+      - AUKRO_SERVICE_PORT=${AUKRO_SERVICE_PORT:-3700}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NOTIFICATION_SERVICE_URL=${NOTIFICATION_SERVICE_URL}
+      - LOGGING_SERVICE_URL=${LOGGING_SERVICE_URL}
+      - AUKRO_CLIENT_ID=${AUKRO_CLIENT_ID}
+      - AUKRO_CLIENT_SECRET=${AUKRO_CLIENT_SECRET}
+      - AUKRO_REDIRECT_URI=${AUKRO_REDIRECT_URI}
+      - AUKRO_AUTH_URL=${AUKRO_AUTH_URL:-https://aukro.pl/auth/oauth/token}
+      - AUKRO_AUTH_SANDBOX_URL=${AUKRO_AUTH_SANDBOX_URL}
+      - AUKRO_OAUTH_AUTHORIZE_URL=${AUKRO_OAUTH_AUTHORIZE_URL}
+      - AUKRO_OAUTH_TOKEN_URL=${AUKRO_OAUTH_TOKEN_URL}
+      - AUKRO_API_URL=${AUKRO_API_URL:-https://api.aukro.pl}
+      - AUKRO_API_SANDBOX_URL=${AUKRO_API_SANDBOX_URL}
+      - AUKRO_USE_SANDBOX=${AUKRO_USE_SANDBOX:-false}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-microservice:3200}
+      - WAREHOUSE_SERVICE_URL=${WAREHOUSE_SERVICE_URL:-http://warehouse-microservice:3201}
+      - ORDER_SERVICE_URL=${ORDER_SERVICE_URL:-http://order-microservice:3203}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://guest:guest@statex_rabbitmq:5672}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-aukro}
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - nginx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3700/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  imports:
+    build:
+      context: .
+      dockerfile: services/imports/Dockerfile
+    container_name: aukro-service-imports-blue
+    ports:
+      - "${IMPORT_SERVICE_PORT:-3702}:3702"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - SERVICE_NAME=${SERVICE_NAME:-aukro-service}
+      - IMPORT_SERVICE_PORT=${IMPORT_SERVICE_PORT:-3702}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NOTIFICATION_SERVICE_URL=${NOTIFICATION_SERVICE_URL}
+      - LOGGING_SERVICE_URL=${LOGGING_SERVICE_URL}
+      - AUKRO_SERVICE_URL=${AUKRO_SERVICE_URL:-http://aukro:3700}
+      - IMPORT_CSV_MAX_SIZE=${IMPORT_CSV_MAX_SIZE:-104857600}
+      - IMPORT_CSV_BATCH_SIZE=${IMPORT_CSV_BATCH_SIZE:-50}
+      - NOTIFICATION_ORDER_CREATED=${NOTIFICATION_ORDER_CREATED:-true}
+      - NOTIFICATION_ORDER_UPDATED=${NOTIFICATION_ORDER_UPDATED:-true}
+      - NOTIFICATION_STOCK_LOW=${NOTIFICATION_STOCK_LOW:-true}
+      - NOTIFICATION_EMAIL_TO=${NOTIFICATION_EMAIL_TO}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-aukro}
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - nginx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3702/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  settings:
+    build:
+      context: .
+      dockerfile: services/settings/Dockerfile
+    container_name: aukro-service-settings-blue
+    ports:
+      - "${AUKRO_SETTINGS_SERVICE_PORT:-3703}:3703"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - SERVICE_NAME=${SERVICE_NAME:-aukro-service}
+      - AUKRO_SETTINGS_SERVICE_PORT=${AUKRO_SETTINGS_SERVICE_PORT:-3703}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NOTIFICATION_SERVICE_URL=${NOTIFICATION_SERVICE_URL}
+      - LOGGING_SERVICE_URL=${LOGGING_SERVICE_URL}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT}
+      - AUTH_SERVICE_TIMEOUT=${AUTH_SERVICE_TIMEOUT}
+      - AUKRO_AUTH_URL=${AUKRO_AUTH_URL:-https://aukro.pl/auth/oauth/token}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-aukro}
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - nginx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3703/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+      args:
+        - FRONTEND_API_URL=${FRONTEND_API_URL}
+    container_name: aukro-service-frontend-blue
+    ports:
+      - "${AUKRO_FRONTEND_SERVICE_PORT:-3705}:3705"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+    networks:
+      - nginx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3705/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
+
+networks:
+  nginx-network:
+    external: true
+    name: nginx-network
