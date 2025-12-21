@@ -21,14 +21,14 @@ The Aukro Service integrates with the Aukro marketplace platform, managing offer
 - Create/update offers on Aukro from catalog products
 - Multi-account support
 - Subscribe to `stock.updated` events → update Aukro stock
-- Receive Aukro orders → forward to order-microservice
+- Receive Aukro orders → forward to orders-microservice
 - Store Aukro-specific offer data
 
 ## Architecture
 
 - Uses `catalog-microservice` (3200) for product data
 - Uses `warehouse-microservice` (3201) for stock levels
-- Uses `order-microservice` (3203) for order processing
+- Uses `orders-microservice` (3203) for order processing
 - Subscribes to RabbitMQ `stock.updated` events
 
 ## Database

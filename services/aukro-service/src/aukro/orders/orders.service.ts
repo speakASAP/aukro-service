@@ -39,8 +39,24 @@ export class OrdersService {
       data,
     });
 
-    // Forward to order-microservice
+    // Forward to orders-microservice
     try {
+      // Parse items from rawData if available
+      let items: any[] = [];
+      if (order.rawData && typeof order.rawData === 'object') {
+        const rawData = order.rawData as any;
+        if (Array.isArray(rawData.items)) {
+          items = rawData.items.map((item: any) => ({
+            productId: item.productId || null,
+            sku: item.sku || null,
+            title: item.title || item.name || 'Unknown',
+            quantity: item.quantity || 1,
+            unitPrice: parseFloat(item.price || item.unitPrice || '0'),
+            totalPrice: parseFloat(item.totalPrice || (item.price || item.unitPrice || '0') * (item.quantity || 1)),
+          }));
+        }
+      }
+
       const centralOrder = await this.orderClient.createOrder({
         externalOrderId: order.aukroOrderId,
         channel: 'aukro',
@@ -49,7 +65,7 @@ export class OrdersService {
           email: order.customerEmail,
           phone: order.customerPhone,
         },
-        items: [], // TODO: Parse from Aukro order data
+        items,
         subtotal: Number(order.total),
         shippingCost: 0,
         taxAmount: 0,
@@ -66,18 +82,84 @@ export class OrdersService {
         },
       });
 
-      this.logger.log(`Order ${order.id} forwarded to order-microservice: ${centralOrder.id}`);
+      this.logger.log(`Order ${order.id} forwarded to orders-microservice: ${centralOrder.id}`);
     } catch (error: any) {
-      this.logger.error(`Failed to forward order to order-microservice: ${error.message}`);
+      this.logger.error(`Failed to forward order to orders-microservice: ${error.message}`);
     }
 
     return order;
   }
 
   async handleWebhook(data: any) {
-    // TODO: Implement Aukro webhook handler
-    this.logger.log('Webhook handler not yet implemented');
-    return { message: 'Webhook handler not yet implemented' };
+    try {
+      this.logger.log('Received Aukro webhook', { data });
+
+      // Parse webhook data (format depends on Aukro API)
+      // This is a generic implementation - adjust based on actual Aukro webhook format
+      const {
+        orderId: aukroOrderId,
+        accountId,
+        customerEmail,
+        customerPhone,
+        items = [],
+        total,
+        currency = 'CZK',
+        status = 'pending',
+      } = data;
+
+      if (!aukroOrderId) {
+        throw new Error('orderId is required in webhook data');
+      }
+
+      // Check if order already exists
+      const existingOrder = await this.prisma.aukroOrder.findUnique({
+        where: { aukroOrderId },
+      });
+
+      if (existingOrder) {
+        this.logger.log(`Order ${aukroOrderId} already exists, updating status`);
+        // Update order status if changed
+        if (existingOrder.status !== status) {
+          await this.prisma.aukroOrder.update({
+            where: { id: existingOrder.id },
+            data: { status, updatedAt: new Date() },
+          });
+        }
+        return existingOrder;
+      }
+
+      // Find account if accountId not provided
+      let finalAccountId = accountId;
+      if (!finalAccountId) {
+        // Try to find active account (if only one account)
+        const accounts = await this.prisma.aukroAccount.findMany({
+          where: { isActive: true },
+        });
+        if (accounts.length === 1) {
+          finalAccountId = accounts[0].id;
+        } else {
+          throw new Error('accountId is required when multiple accounts exist');
+        }
+      }
+
+      // Create order
+      const order = await this.create({
+        accountId: finalAccountId,
+        aukroOrderId,
+        customerEmail,
+        customerPhone,
+        total: parseFloat(total) || 0,
+        currency,
+        status,
+        rawData: data,
+      });
+
+      this.logger.log(`Order created from webhook: ${order.id}`);
+      return order;
+    } catch (error: any) {
+      this.logger.error(`Failed to handle webhook: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
 
