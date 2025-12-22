@@ -53,9 +53,11 @@ export class OrderClientService {
       );
       this.logger.log(`Order created in orders-microservice: ${response.data.data?.id}`, 'OrderClient');
       return response.data.data;
-    } catch (error) {
-      this.logger.error(`Failed to create order: ${error.message}`, error.stack, 'OrderClient');
-      throw new HttpException(`Failed to create order: ${error.message}`, HttpStatus.BAD_REQUEST);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to create order: ${errorMessage}`, errorStack, 'OrderClient');
+      throw new HttpException(`Failed to create order: ${errorMessage}`, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -68,9 +70,11 @@ export class OrderClientService {
         this.httpService.put(`${this.baseUrl}/api/orders/${orderId}/status`, { status })
       );
       return response.data.data;
-    } catch (error) {
-      this.logger.error(`Failed to update order status: ${error.message}`, error.stack, 'OrderClient');
-      throw new HttpException(`Failed to update order status: ${error.message}`, HttpStatus.BAD_REQUEST);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to update order status: ${errorMessage}`, errorStack, 'OrderClient');
+      throw new HttpException(`Failed to update order status: ${errorMessage}`, HttpStatus.BAD_REQUEST);
     }
   }
 

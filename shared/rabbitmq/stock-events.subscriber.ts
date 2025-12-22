@@ -24,8 +24,16 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    if (this.channel) await this.channel.close();
-    if (this.connection) await this.connection.close();
+    try {
+      if (this.channel) {
+        await (this.channel as any).close();
+      }
+      if (this.connection) {
+        await (this.connection as any).close();
+      }
+    } catch (error: unknown) {
+      // Ignore errors during cleanup
+    }
   }
 
   private async connect() {
@@ -33,8 +41,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
       const url = process.env.RABBITMQ_URL || 'amqp://guest:guest@statex_rabbitmq:5672';
       this.logger.log(`Connecting to RabbitMQ: ${url}`, 'StockEventsSubscriber');
 
-      this.connection = await amqp.connect(url);
-      this.channel = await this.connection.createChannel();
+      const conn = await amqp.connect(url);
+      this.connection = conn as unknown as amqp.Connection;
+      const ch = await (conn as any).createChannel();
+      this.channel = ch as unknown as amqp.Channel;
 
       // Assert exchange exists
       await this.channel.assertExchange(this.exchangeName, 'topic', { durable: true });
@@ -46,8 +56,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
       await this.channel.bindQueue(this.queueName, this.exchangeName, 'stock.#');
 
       this.logger.log('Connected to RabbitMQ and subscribed to stock events', 'StockEventsSubscriber');
-    } catch (error) {
-      this.logger.error(`Failed to connect to RabbitMQ: ${error.message}`, error.stack, 'StockEventsSubscriber');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to connect to RabbitMQ: ${errorMessage}`, errorStack, 'StockEventsSubscriber');
     }
   }
 
@@ -64,8 +76,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
             const event = JSON.parse(msg.content.toString());
             await this.handleStockEvent(event);
             this.channel?.ack(msg);
-          } catch (error) {
-            this.logger.error(`Error processing stock event: ${error.message}`, error.stack, 'StockEventsSubscriber');
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            this.logger.error(`Error processing stock event: ${errorMessage}`, errorStack, 'StockEventsSubscriber');
             this.channel?.nack(msg, false, false); // Reject and don't requeue
           }
         },
@@ -73,8 +87,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
       );
 
       this.logger.log('Subscribed to stock events queue', 'StockEventsSubscriber');
-    } catch (error) {
-      this.logger.error(`Failed to subscribe to stock events: ${error.message}`, error.stack, 'StockEventsSubscriber');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to subscribe to stock events: ${errorMessage}`, errorStack, 'StockEventsSubscriber');
     }
   }
 
@@ -152,8 +168,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
           // This could be done via InventoryService or directly via AllegroApiService
         }
       }
-    } catch (error: any) {
-      this.logger.error(`Failed to update offer stock: ${error.message}`, error.stack, 'StockEventsSubscriber');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to update offer stock: ${errorMessage}`, errorStack, 'StockEventsSubscriber');
     }
   }
 
@@ -168,8 +186,10 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
       // Optionally deactivate offers on Allegro
       // This could be done via OffersService or AllegroApiService
       this.logger.warn(`Product ${productId} is out of stock - offers updated`, 'StockEventsSubscriber');
-    } catch (error: any) {
-      this.logger.error(`Failed to handle out of stock: ${error.message}`, error.stack, 'StockEventsSubscriber');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to handle out of stock: ${errorMessage}`, errorStack, 'StockEventsSubscriber');
     }
   }
 }
