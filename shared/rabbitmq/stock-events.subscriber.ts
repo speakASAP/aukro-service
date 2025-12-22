@@ -8,7 +8,7 @@ import { LoggerService, PrismaService } from '../index';
  */
 @Injectable()
 export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
-  private connection: amqp.Connection | null = null;
+  private connection: any = null;
   private channel: amqp.Channel | null = null;
   private readonly exchangeName = 'stock.events';
   private readonly queueName = 'stock.aukro-service';
@@ -29,7 +29,7 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
         await (this.channel as any).close();
       }
       if (this.connection) {
-        await (this.connection as any).close();
+        await this.connection.close();
       }
     } catch (error: unknown) {
       // Ignore errors during cleanup
@@ -42,8 +42,8 @@ export class StockEventsSubscriber implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Connecting to RabbitMQ: ${url}`, 'StockEventsSubscriber');
 
       const conn = await amqp.connect(url);
-      this.connection = conn as unknown as amqp.Connection;
-      const ch = await (conn as any).createChannel();
+      this.connection = conn;
+      const ch = await this.connection.createChannel();
       this.channel = ch as unknown as amqp.Channel;
 
       // Assert exchange exists
