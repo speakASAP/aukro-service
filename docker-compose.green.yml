@@ -57,6 +57,7 @@ services:
       resources:
         limits:
           memory: 200M
+          cpus: '0.5\'
         reservations:
           memory: 70M
     networks:
@@ -213,6 +214,41 @@ services:
       timeout: 10s
       retries: 2
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+          cpus: '0.25\'
+        reservations:
+          memory: 20M
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: '0.5\'
+        reservations:
+          memory: 70M
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: '0.5\'
+        reservations:
+          memory: 70M
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: '0.5\'
+        reservations:
+          memory: 70M
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+          cpus: '0.5\'
+        reservations:
+          memory: 50M
 
 networks:
   nginx-network:
